@@ -1,0 +1,54 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               String           @id @default(uuid())
+  name             String
+  email            String           @unique
+  password         String
+  credits          Int              @default(5)
+  emailVerified    Boolean          @default(false)
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  totalSessionsCompleted Int        @default(0)
+  sessions         LabSession[]
+  creditTransactions CreditTransaction[]
+}
+
+model LabSession {
+  id          String    @id @default(uuid())
+  userId      String
+  osType      String    // "Ubuntu", "Rocky Linux", or "OpenSUSE"
+  startTime   DateTime  @default(now())
+  endTime     DateTime?
+  status      String    // "provisioning", "running", "completed", "terminated", "error"
+  instanceId  String?   // GCP instance ID
+  guacamoleConnectionId String?
+  user        User      @relation(fields: [userId], references: [id])
+  logs        SessionLog[]
+}
+
+model SessionLog {
+  id          String    @id @default(uuid())
+  sessionId   String
+  timestamp   DateTime  @default(now())
+  action      String    // "created", "started", "connected", "disconnected", "terminated", etc.
+  details     String?
+  session     LabSession @relation(fields: [sessionId], references: [id])
+}
+
+model CreditTransaction {
+  id          String    @id @default(uuid())
+  userId      String
+  amount      Int       // Positive for purchases, negative for usage
+  description String
+  timestamp   DateTime  @default(now())
+  user        User      @relation(fields: [userId], references: [id])
+}
