@@ -47,20 +47,6 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [isStartingLab, setIsStartingLab] = useState<string | null>(null);
 
-  useEffect(() => {
-    // If not authenticated, redirect to login
-    if (status === "unauthenticated") {
-      router.push("/login");
-      return;
-    }
-
-    if (status === "authenticated") {
-      fetchDashboardData();
-      // Set up polling to refresh session data
-      const interval = setInterval(fetchDashboardData, 15000);
-      return () => clearInterval(interval);
-    }
-  }, [status, router]);
 
   const fetchDashboardData = async () => {
     try {
