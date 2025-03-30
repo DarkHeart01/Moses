@@ -1,9 +1,10 @@
-// app/layout.tsx
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { SessionProvider } from "next-auth/react";
 import SessionHandler from "@/components/SessionHandler";
+import Header from '@/components/layout/header'
+import Footer from '@/components/layout/footer'
+import ClientProvider from "@/components/auth/client-provider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -21,9 +22,13 @@ export default async function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <SessionHandler>
-          {children}
-        </SessionHandler>
+        <div className="flex flex-col min-h-screen">
+          <Header />
+            <SessionHandler>
+              <ClientProvider>{children}</ClientProvider>
+            </SessionHandler>
+          <Footer />
+        </div>
       </body>
     </html>
   );

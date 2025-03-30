@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,74 +8,78 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
-import { Clock, AlertCircle, Terminal, Play, Repeat, Loader2 } from "lucide-react";
-import { Toast } from "@/components/ui/use-toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+import { Clock, AlertCircle, Terminal, Repeat } from "lucide-react";
+import { useAuth } from '@/hooks/use-auth';
+import { useSession } from '@/hooks/use-session';
+import OSCard from '@/components/lab/os-card';
+import Loading from '@/components/shared/loading';
+import Error from '@/components/shared/error';
 
-// Types for our dashboard data
-interface DashboardData {
-  user: {
-    name: string;
-    credits: number;
-  };
-  activeSessions: SessionInfo[];
-}
-
-interface SessionInfo {
-  id: string;
-  osType: "Ubuntu" | "Rocky Linux" | "OpenSUSE";
-  startTime: string;
-  timeRemaining: number; // in seconds
-  status: "provisioning" | "running" | "error" | "terminating";
-}
+// OS packages data
+const osPackages = [
+  {
+    id: 'ubuntu',
+    name: 'Ubuntu',
+    description: 'Latest LTS version with common development tools',
+    features: [
+      "Python, Node.js, Java development",
+      "Docker and containerization",
+      "Web development environment",
+      "Data science tools"
+    ],
+    logoSrc: '/ubuntu-logo.svg'
+  },
+  {
+    id: 'rocky',
+    name: 'Rocky Linux',
+    description: 'Enterprise-grade Linux distribution',
+    features: [
+      "Systems administration practice",
+      "Enterprise application servers",
+      "Security configuration training",
+      "Automation with Ansible"
+    ],
+    logoSrc: '/rocky-logo.svg'
+  },
+  {
+    id: 'opensuse',
+    name: 'OpenSUSE',
+    description: 'Stable and versatile Linux distribution',
+    features: [
+      "YaST system management",
+      "SUSE certification practice",
+      "Enterprise Linux training",
+      "Containerization with Podman"
+    ],
+    logoSrc: '/opensuse-logo.svg'
+  }
+];
 
 export default function DashboardPage() {
-  const { data: session, status } = useSession();
   const router = useRouter();
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [activeSession, setActiveSession] = useState<SessionInfo | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { toast } = require("@/components/ui/use-toast");
+  const { user } = useAuth();
+  const { 
+    activeSession, 
+    loading, 
+    error, 
+    fetchActiveSession, 
+    startSession 
+  } = useSession();
   const [isStartingLab, setIsStartingLab] = useState<string | null>(null);
 
+  useEffect(() => {
+    fetchActiveSession();
+    // Set up polling to refresh session data
+    const interval = setInterval(fetchActiveSession, 15000);
+    return () => clearInterval(interval);
+  }, []);
 
-  const fetchDashboardData = async () => {
-    try {
-      const response = await fetch("/api/dashboard");
-      
-      if (!response.ok) {
-        throw new Error("Failed to fetch dashboard data");
-      }
-      
-      const data = await response.json();
-      setDashboardData(data);
-      
-      // Check if there's an active session
-      if (data.activeSessions && data.activeSessions.length > 0) {
-        setActiveSession(data.activeSessions[0]);
-      } else {
-        setActiveSession(null);
-      }
-    } catch (err) {
-      console.error("Error fetching dashboard data:", err);
-      setError("Could not load dashboard data. Please try again later.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const startLabSession = async (osType: "Ubuntu" | "Rocky Linux" | "OpenSUSE") => {
-    if (dashboardData?.user.credits === 0) {
-      Toast({
+  const handleStartSession = async (osType: string) => {
+    if (!user || user.credits === 0) {
+      toast({
         title: "No credits available",
+        description: "Please purchase more credits to start a lab session.",
         variant: "destructive",
       });
       return;
@@ -85,33 +88,9 @@ export default function DashboardPage() {
     setIsStartingLab(osType);
     
     try {
-      const response = await fetch("/api/lab/start", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ osType }),
-      });
-      
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || "Failed to start lab session");
-      }
-      
-      const data = await response.json();
-      
-      Toast({
-        title: "Lab session started",
-      });
-      
-      // Immediately redirect to the lab session page
-      router.push(`/lab/${data.sessionId}`);
+      await startSession(osType as "Ubuntu" | "Rocky Linux" | "OpenSUSE");
     } catch (err) {
       console.error("Error starting lab session:", err);
-      Toast({
-        title: "Failed to start lab session",
-        variant: "destructive",
-      });
     } finally {
       setIsStartingLab(null);
     }
@@ -128,26 +107,19 @@ export default function DashboardPage() {
     return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
   };
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-screen">
-        <Loader2 className="h-12 w-12 animate-spin text-blue-500" />
-        <p className="mt-4 text-lg">Loading your dashboard...</p>
-      </div>
-    );
+  if (loading) {
+    return <Loading text="Loading your dashboard..." size="lg" />;
   }
 
   if (error) {
     return (
       <div className="container mx-auto py-10">
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>Error</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-        <div className="mt-4 text-center">
-          <Button onClick={fetchDashboardData}>Try Again</Button>
-        </div>
+        <Error 
+          title="Error Loading Dashboard" 
+          message={error} 
+          actionLabel="Try Again" 
+          onAction={fetchActiveSession} 
+        />
       </div>
     );
   }
@@ -156,7 +128,7 @@ export default function DashboardPage() {
     <div className="container mx-auto py-10">
       <div className="flex flex-col md:flex-row items-start justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold">Welcome, {dashboardData?.user.name}</h1>
+          <h1 className="text-3xl font-bold">Welcome, {user?.name}</h1>
           <p className="text-gray-500 mt-1">
             Start a new lab session or reconnect to an active one
           </p>
@@ -164,7 +136,7 @@ export default function DashboardPage() {
         <div className="mt-4 md:mt-0 flex items-center space-x-2">
           <span className="text-gray-500">Credits:</span>
           <Badge variant="outline" className="text-lg px-3 py-1">
-            {dashboardData?.user.credits || 0}
+            {user?.credits || 0}
           </Badge>
           <Button variant="outline" onClick={() => router.push("/profile")}>
             View Profile
@@ -212,7 +184,7 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      {dashboardData?.user.credits === 0 ? (
+      {user?.credits === 0 ? (
         <Alert variant="destructive" className="mb-8">
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>No credits available</AlertTitle>
@@ -235,260 +207,19 @@ export default function DashboardPage() {
       </p>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        {/* Ubuntu Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <img 
-                src="/ubuntu-logo.svg" 
-                alt="Ubuntu" 
-                className="h-8 w-8 mr-2" 
-              />
-              Ubuntu
-            </CardTitle>
-            <CardDescription>
-              Latest LTS version with common development tools
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="list-disc pl-5 space-y-1 text-sm">
-              <li>Python, Node.js, Java development</li>
-              <li>Docker and containerization</li>
-              <li>Web development environment</li>
-              <li>Data science tools</li>
-            </ul>
-          </CardContent>
-          <CardFooter>
-            {activeSession ? (
-              <Button variant="outline" className="w-full" disabled>
-                Active session in progress
-              </Button>
-            ) : (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button 
-                    className="w-full"
-                    disabled={isStartingLab !== null || dashboardData?.user.credits === 0}
-                  >
-                    {isStartingLab === "Ubuntu" ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Starting...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="mr-2 h-4 w-4" />
-                        Start Lab
-                      </>
-                    )}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Start Ubuntu Lab Session</DialogTitle>
-                    <DialogDescription>
-                      This will use 1 credit from your account. The session will last for 45 minutes.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <p>
-                    You currently have {dashboardData?.user.credits} credits available.
-                  </p>
-                  <DialogFooter>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => router.push("/manual")}
-                    >
-                      View Manual
-                    </Button>
-                    <Button 
-                      onClick={() => startLabSession("Ubuntu")}
-                      disabled={isStartingLab !== null}
-                    >
-                      {isStartingLab === "Ubuntu" ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Starting...
-                        </>
-                      ) : (
-                        "Start Session"
-                      )}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-          </CardFooter>
-        </Card>
-
-        {/* Rocky Linux Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <img 
-                src="/rocky-logo.svg" 
-                alt="Rocky Linux" 
-                className="h-8 w-8 mr-2" 
-              />
-              Rocky Linux
-            </CardTitle>
-            <CardDescription>
-              Enterprise-grade Linux distribution
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="list-disc pl-5 space-y-1 text-sm">
-              <li>Systems administration practice</li>
-              <li>Enterprise application servers</li>
-              <li>Security configuration training</li>
-              <li>Automation with Ansible</li>
-            </ul>
-          </CardContent>
-          <CardFooter>
-            {activeSession ? (
-              <Button variant="outline" className="w-full" disabled>
-                Active session in progress
-              </Button>
-            ) : (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button 
-                    className="w-full"
-                    disabled={isStartingLab !== null || dashboardData?.user.credits === 0}
-                  >
-                    {isStartingLab === "Rocky Linux" ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Starting...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="mr-2 h-4 w-4" />
-                        Start Lab
-                      </>
-                    )}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Start Rocky Linux Lab Session</DialogTitle>
-                    <DialogDescription>
-                      This will use 1 credit from your account. The session will last for 45 minutes.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <p>
-                    You currently have {dashboardData?.user.credits} credits available.
-                  </p>
-                  <DialogFooter>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => router.push("/manual")}
-                    >
-                      View Manual
-                    </Button>
-                    <Button 
-                      onClick={() => startLabSession("Rocky Linux")}
-                      disabled={isStartingLab !== null}
-                    >
-                      {isStartingLab === "Rocky Linux" ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Starting...
-                        </>
-                      ) : (
-                        "Start Session"
-                      )}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-          </CardFooter>
-        </Card>
-
-        {/* OpenSUSE Card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <img 
-                src="/opensuse-logo.svg" 
-                alt="OpenSUSE" 
-                className="h-8 w-8 mr-2" 
-              />
-              OpenSUSE
-            </CardTitle>
-            <CardDescription>
-              Stable and versatile Linux distribution
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <ul className="list-disc pl-5 space-y-1 text-sm">
-              <li>YaST system management</li>
-              <li>SUSE certification practice</li>
-              <li>Enterprise Linux training</li>
-              <li>Containerization with Podman</li>
-            </ul>
-          </CardContent>
-          <CardFooter>
-            {activeSession ? (
-              <Button variant="outline" className="w-full" disabled>
-                Active session in progress
-              </Button>
-            ) : (
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button 
-                    className="w-full"
-                    disabled={isStartingLab !== null || dashboardData?.user.credits === 0}
-                  >
-                    {isStartingLab === "OpenSUSE" ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Starting...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="mr-2 h-4 w-4" />
-                        Start Lab
-                      </>
-                    )}
-                  </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Start OpenSUSE Lab Session</DialogTitle>
-                    <DialogDescription>
-                      This will use 1 credit from your account. The session will last for 45 minutes.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <p>
-                    You currently have {dashboardData?.user.credits} credits available.
-                  </p>
-                  <DialogFooter>
-                    <Button 
-                      variant="outline" 
-                      onClick={() => router.push("/manual")}
-                    >
-                      View Manual
-                    </Button>
-                    <Button 
-                      onClick={() => startLabSession("OpenSUSE")}
-                      disabled={isStartingLab !== null}
-                    >
-                      {isStartingLab === "OpenSUSE" ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Starting...
-                        </>
-                      ) : (
-                        "Start Session"
-                      )}
-                    </Button>
-                  </DialogFooter>
-                </DialogContent>
-              </Dialog>
-            )}
-          </CardFooter>
-        </Card>
+        {osPackages.map((os) => (
+          <OSCard
+            key={os.id}
+            name={os.name}
+            description={os.description}
+            features={os.features}
+            logoSrc={os.logoSrc}
+            isLoading={isStartingLab === os.name}
+            isDisabled={!!activeSession || (user?.credits || 0) === 0}
+            disabledReason={activeSession ? "Active session in progress" : (user?.credits || 0) === 0 ? "No credits available" : ""}
+            onStart={() => handleStartSession(os.name)}
+          />
+        ))}
       </div>
 
       <Separator className="my-8" />

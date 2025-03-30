@@ -1,4 +1,3 @@
-// app/profile/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -131,7 +130,6 @@ export default function ProfilePage() {
   return (
     <div className="container mx-auto py-10">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* User Info Card */}
         <Card className="lg:col-span-1">
           <CardHeader>
             <div className="flex items-center space-x-4">
@@ -199,7 +197,6 @@ export default function ProfilePage() {
           </CardFooter>
         </Card>
         
-        {/* Sessions History Card */}
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Lab Session History</CardTitle>

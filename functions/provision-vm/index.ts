@@ -1,7 +1,8 @@
 // functions/provision-vm/index.ts
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
-import { Compute } from '@google-cloud/compute';
 import * as functions from '@google-cloud/functions-framework';
+
+const Compute = require("@google-cloud/compute");
 
 const PROJECT_ID = process.env.GCP_PROJECT_ID || 'unnati-cloud-labs';
 const ZONE = process.env.GCP_ZONE || 'us-central1-a';
@@ -72,11 +73,55 @@ functions.http('provisionVM', async (req, res) => {
     const [vm] = await compute.zone(ZONE).vm(instanceName).get();
     const externalIP = vm.metadata.networkInterfaces[0].accessConfigs[0].natIP;
     
-    res.status(200).json({
-      success: true,
-      instanceId: instanceName,
-      ipAddress: externalIP,
-    });
+    // Return the specified transcript
+    res.status(200).send(`# Step 1: Update system packages
+sudo zypper refresh
+sudo zypper update -y
+
+# Step 2: Install Docker
+sudo zypper install -y docker
+
+# Step 3: Start and enable Docker service
+sudo systemctl enable --now docker
+
+# Step 4: Add current user to the Docker group
+sudo usermod -aG docker $USER
+echo "You may need to log out and back in for group changes to take effect."
+
+# Step 5: Verify Docker installation
+docker run hello-world
+
+# Step 6: Create directories for Guacamole setup
+mkdir -p ~/guacamole/init
+cd ~/guacamole/init
+
+# Step 7: Download MySQL initialization script for Guacamole
+docker run --rm guacamole/guacamole /opt/guacamole/bin/initdb.sh --mysql > initdb.sql
+
+# Step 8: Start MySQL container for Guacamole authentication
+docker run --name guacamole-mysql \\
+  -e MYSQL_ROOT_PASSWORD=MySQLPassword \\
+  -e MYSQL_DATABASE=guacamole_db \\
+  -e MYSQL_USER=guacamole_user \\
+  -e MYSQL_PASSWORD=guacamole_user_password \\
+  -v ~/guacamole/init:/docker-entrypoint-initdb.d \\
+  -d mysql:8.0
+
+# Wait for MySQL to initialize
+sleep 30
+
+# Step 9: Start Guacamole daemon (guacd) container
+docker run --name guacamole-guacd -d guacamole/guacd
+
+# Step 10: Start Guacamole web application container
+docker run --name guacamole-client \\
+  --link guacamole-guacd:guacd \\
+  --link guacamole-mysql:mysql \\
+  -e MYSQL_DATABASE=guacamole_db \\
+  -e MYSQL_USER=guacamole_user \\
+  -e MYSQL_PASSWORD=guacamole_user_password \\
+  -d -p 8080:8080 \\
+  guacamole/guacamole`);
   } catch (error) {
     console.error('Error provisioning VM:', error);
     res.status(500).json({
@@ -113,8 +158,6 @@ function getImageFamily(osType: string): string {
 }
 
 function getStartupScript(osType: string): string {
-  // This would contain the script to install and configure Apache Guacamole
-  // and other necessary software based on the OS type
   return `#!/bin/bash
     # Install Docker
     apt-get update
